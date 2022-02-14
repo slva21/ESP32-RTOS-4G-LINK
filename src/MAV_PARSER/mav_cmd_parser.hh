@@ -9,12 +9,16 @@ extern mavlink_set_position_target_global_int_t set_target_global_ned;
 extern mavlink_set_attitude_target_t set_target_attitude;
 extern mavlink_set_mode_t set_mode;
 extern mavlink_set_home_position_t set_position_home;
+extern mavlink_command_long_t mav_cmd_long;
 
-class MAV_CMD_PARSER
+class MAV_PARSER
 {
+
 private:
+    static const int FORCE_CMD = 21196;
+
 public:
-    static inline bool MAV_PARSER(const mavlink_message_t *msg, MAV_MSG_ENCODER *mav_msg_encoder)
+    static inline bool MAV_MSG_PARSER(const mavlink_message_t *msg, MAV_MSG_ENCODER *mav_msg_encoder)
     {
         switch (msg->msgid)
         {
@@ -33,8 +37,6 @@ public:
         case MAVLINK_MSG_ID_GLOBAL_POSITION_INT:
             mavlink_msg_global_position_int_decode(msg, &global_position);
 
-            Serial.printf("long: %d, lat: %d, alt: %d, rel_alt: %d, vx: %d, vy: %d, vz: %d, hdg: %d \n", global_position.lon, global_position.lat, global_position.alt, global_position.relative_alt, global_position.vx, global_position.vy, global_position.vz, global_position.hdg);
-
         case MAVLINK_MSG_ID_POSITION_TARGET_LOCAL_NED: // Reports
 
             mavlink_msg_position_target_local_ned_decode(msg, &target_local_position);
@@ -49,7 +51,17 @@ public:
 
             // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ SET COMMANDS ~~~~~~~~~~~~~~~~~~~~~~~~~~~//
 
-            // ~~~~~~~~~~~~~~~~~ MOVEMENT ~~~~~~~~~~~~~~~~~~//
+        case MAVLINK_MSG_ID_COMMAND_LONG:
+
+            mavlink_msg_command_long_decode(msg, &mav_cmd_long);
+
+            mav_msg_encoder->encode_cmd_ack(MAV_PARSER::MAV_CMD_LONG_PARSER());
+
+            return true; // Return true as ACK needs to be sent back
+
+            break;
+
+        // ~~~~~~~~~~~~~~~~~ MOVEMENT ~~~~~~~~~~~~~~~~~~//
         case MAVLINK_MSG_ID_SET_POSITION_TARGET_LOCAL_NED:
 
             mavlink_msg_set_position_target_local_ned_decode(msg, &set_target_local_ned);
@@ -79,6 +91,37 @@ public:
             break;
         }
 
-        return true;
+        return false;
+    }
+
+    static mavlink_command_ack_t MAV_CMD_LONG_PARSER()
+    {
+        mavlink_command_ack_t ACK;
+
+        switch (mav_cmd_long.command)
+        {
+        case MAV_CMD_COMPONENT_ARM_DISARM:
+
+            ACK.command = MAV_CMD_COMPONENT_ARM_DISARM;
+
+            if (mav_cmd_long.param2 == FORCE_CMD)
+            {
+                PILOT_ARM_DISARM = mav_cmd_long.param1;
+
+                ACK.result = 1;
+            }
+            else
+            {
+                // #TODO SAFTEY CHECKS
+                PILOT_ARM_DISARM = mav_cmd_long.param1;
+            }
+
+            break;
+
+        default:
+            break;
+        }
+
+        return ACK;
     }
 };

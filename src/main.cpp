@@ -9,26 +9,28 @@ void TASK1_MAV_READ_TCP_CHANNEL_0(void *param)
   while (1)
   {
 
-    while (!client.connect("192.168.1.197", 65432)) // Connect to host
+    while (!client.connect("sorair.mywire.org", 6544)) // Connect to host
     {
       if (DEBUG)
       {
         Serial.println("DEBUG: Connection to host failed");
       }
 
-      vTaskDelay(500 / portTICK_PERIOD_MS); // Delay for 500ms
+      vTaskDelay(500 / portTICK_PERIOD_MS);
     }
 
     while (client.connected()) // If client is connected, Run infinitly
     {
-      // uint8_t byte = Serial.read();
+
       if (mavlink_parse_char(tcp_chan, client.read(), &tcp_msg, &tcp_status)) // Returns 1 if was successful
       {
-        // msg = NULL if error
-        client.printf("Received message with ID %d, sequence: %d from component %d of system %d\n", tcp_msg.msgid, tcp_msg.seq, tcp_msg.compid, tcp_msg.sysid);
-        // ... DECODE THE MESSAGE PAYLOAD HERE ...
 
-        // mavlink_msg_global_position_int_decode()
+        MAV_MSG_ENCODER msg_encoder; // Create a message encoder container that will hold rtn buffer
+
+        if (MAV_PARSER::MAV_MSG_PARSER(&tcp_msg, &msg_encoder))
+        {
+          client.write(msg_encoder.rtn_buffer, msg_encoder.rtn_buffer_len);
+        }
       }
     }
   }
@@ -49,9 +51,16 @@ void TASK2_MAV_READ_SERIAL_CHANNEL_1(void *param)
       {
 
         MAV_MSG_ENCODER msg_encoder; // Create a message encoder container that will hold rtn buffer
-        MAV_CMD_PARSER::MAV_PARSER(&serial_msg, &msg_encoder);
 
-        // Serial.write(msg_encoder.rtn_buffer, msg_encoder.rtn_buffer_len);
+        if (MAV_PARSER::MAV_MSG_PARSER(&serial_msg, &msg_encoder))
+        {
+          if (xSemaphoreTake(serial_channel_1_mutex, 1 / portTICK_PERIOD_MS) == pdTRUE) // Block for 1ms if cannot take
+          {
+            Serial.write(msg_encoder.rtn_buffer, msg_encoder.rtn_buffer_len);
+
+            xSemaphoreGive(serial_channel_1_mutex); // Give back
+          }
+        }
       }
     }
   }
@@ -59,10 +68,18 @@ void TASK2_MAV_READ_SERIAL_CHANNEL_1(void *param)
 
 void TIMER1_MAV_SEND_HEARTBEAT(TimerHandle_t xtimer)
 {
+  MAV_MSG_ENCODER msg_encoder;
+  msg_encoder.encode_heartbeat();
 
-  MAV_MSG_ENCODER *msg_encoder;
-  msg_encoder->encode_heartbeat();
-  Serial.write(msg_encoder->rtn_buffer, msg_encoder->rtn_buffer_len);
+  if (xSemaphoreTake(serial_channel_1_mutex, 0.1 / portTICK_PERIOD_MS) == pdTRUE)
+  {
+    Serial.write(msg_encoder.rtn_buffer, msg_encoder.rtn_buffer_len);
+
+    xSemaphoreGive(serial_channel_1_mutex);
+  }
+
+  if (client.connected())
+    client.write(msg_encoder.rtn_buffer, msg_encoder.rtn_buffer_len);
 }
 
 void setup()
@@ -73,6 +90,8 @@ void setup()
   PILOT_STATE = MAV_STATE_BOOT;
 
   pinMode(2, OUTPUT);
+
+  serial_channel_1_mutex = xSemaphoreCreateMutex(); // Create mutex befre staring all task
 
   timer_1_mav_heatbeat = xTimerCreate("Mav Heart-beat timer",    // Name
                                       1000 / portTICK_PERIOD_MS, // Period of timer(in ticks)
@@ -85,26 +104,39 @@ void setup()
   {
     xTimerStart(timer_1_mav_heatbeat, portMAX_DELAY); // Start timer
   }
+  else
+  {
+    if (DEBUG)
+      Serial.println("DEBUG: Heartbeat timer failed. Restarting Autopilot....");
+    ESP.restart();
+  }
 
-  // TCP.INO_WIFI->begin("BT-MQAHXC", "PFL7mPdAkrc4KX");
-  // TCP.INO_WIFI->begin("Ade's-Phone", "Ade4001!");
+  if (ENABLE_TCP_CHANNEL)
+  {
+    TCP.INO_WIFI->begin("BT-MQAHXC", "PFL7mPdAkrc4KX");
 
-  // while (TCP.INO_WIFI->status() != WL_CONNECTED)
-  // {
-  //   vTaskDelay(500 / portTICK_PERIOD_MS);
-  //   Serial.println("Waiting for connection");
-  // }
+    while (TCP.INO_WIFI->status() != WL_CONNECTED)
+    {
+      vTaskDelay(500 / portTICK_PERIOD_MS);
+      if (DEBUG)
+        Serial.println("Waiting for connection");
+    }
 
-  // Serial.println("Connected to WIFI");
-  // Serial.println(TCP.INO_WIFI->localIP());
+    if (DEBUG)
+    {
+      Serial.println("Connected to WIFI");
 
-  // xTaskCreatePinnedToCore(TASK1_MAV_READ_TCP_CHANNEL_0,
-  //                         "Reads Mavlink message from TCP Port",
-  //                         5000,
-  //                         NULL,
-  //                         1,
-  //                         &task_1_mav_tcp,
-  //                         app_cpu);
+      Serial.println(TCP.INO_WIFI->localIP());
+    }
+
+    xTaskCreatePinnedToCore(TASK1_MAV_READ_TCP_CHANNEL_0,
+                            "Reads Mavlink message from TCP Port",
+                            5000,
+                            NULL,
+                            1,
+                            &task_1_mav_tcp,
+                            app_cpu);
+  }
 
   xTaskCreatePinnedToCore(TASK2_MAV_READ_SERIAL_CHANNEL_1,
                           "Reads Mavlink message from Serial Port",

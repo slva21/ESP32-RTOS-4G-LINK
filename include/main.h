@@ -21,10 +21,14 @@ static TaskHandle_t task_2_mav_serial = NULL;
 // Timer handle
 static TimerHandle_t timer_1_mav_heatbeat = nullptr;
 
+// mutex
+
+static SemaphoreHandle_t serial_channel_1_mutex;
+
 SPI_LINK COM;
 TCP_LINK TCP;
 
-#define DEBUG 1
-
-//MAV_CMD
-
+// defines
+#define DEBUG 0
+#define ENABLE_TCP_CHANNEL 0
+const int MAV_PARSER::FORCE_CMD;
