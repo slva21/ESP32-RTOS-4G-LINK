@@ -44,7 +44,7 @@ void TASK2_MAV_READ_SERIAL_CHANNEL_1(void *param)
 
   while (1)
   {
-    while (Serial.available()) // If client is connected, Run infinitly
+    while (Serial.available()) // while Bytes are in the serial buffer, Run section infinitly
     {
       uint8_t byte = Serial.read();
       if (mavlink_parse_char(serial_chan, byte, &serial_msg, &serial_status)) // Returns 1 if was successful

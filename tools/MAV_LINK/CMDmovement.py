@@ -1,4 +1,3 @@
-from numpy import true_divide
 from pymavlink import mavutil
 
 from time import sleep
@@ -29,6 +28,8 @@ while 1:
     print(msg)
 
     sleep(1)
+
+    
 
 
 # while (1):

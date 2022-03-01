@@ -70,6 +70,8 @@ def test_protocol(mavlink, signing=False):
     # get the encoded message as a buffer
     msg_bytes = glb.get_msgbuf()
 
+    
+
     SER.write(msg_bytes)
 
     while(SER.inWaiting() > 0):

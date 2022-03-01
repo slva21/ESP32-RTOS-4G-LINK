@@ -11,6 +11,8 @@ extern mavlink_set_mode_t set_mode;
 extern mavlink_set_home_position_t set_position_home;
 extern mavlink_command_long_t mav_cmd_long;
 
+extern mavlink_system_t mavlink_system;
+
 class MAV_PARSER
 {
 
@@ -53,9 +55,10 @@ public:
 
         case MAVLINK_MSG_ID_COMMAND_LONG:
 
-            mavlink_msg_command_long_decode(msg, &mav_cmd_long);
+            mavlink_msg_command_long_decode(msg, &mav_cmd_long); // Decode the msg object(mavlink message) and populate mav_cmd_long object
 
-            mav_msg_encoder->encode_cmd_ack(MAV_PARSER::MAV_CMD_LONG_PARSER());
+            mav_msg_encoder->encode_cmd_ack(MAV_PARSER::MAV_CMD_LONG_PARSER()); // Parse the mav_cmd_long object and return an ack_msg object
+                                                                                // Encode the the ack_msg object into a mavlink msg obj and stores it in the *mav_msg_encoder object
 
             return true; // Return true as ACK needs to be sent back
 
@@ -97,6 +100,8 @@ public:
     static mavlink_command_ack_t MAV_CMD_LONG_PARSER()
     {
         mavlink_command_ack_t ACK;
+        ACK.target_component = mavlink_system.compid;
+        ACK.target_system = mavlink_system.sysid;
 
         switch (mav_cmd_long.command)
         {
@@ -108,13 +113,58 @@ public:
             {
                 PILOT_ARM_DISARM = mav_cmd_long.param1;
 
-                ACK.result = 1;
+                ACK.result = MAV_RESULT_ACCEPTED;
             }
             else
             {
                 // #TODO SAFTEY CHECKS
                 PILOT_ARM_DISARM = mav_cmd_long.param1;
             }
+
+            break;
+
+        case MAV_CMD_SET_MESSAGE_INTERVAL:
+
+            ACK.command = MAV_CMD_SET_MESSAGE_INTERVAL;
+            break;
+
+        case MAV_CMD_DO_SET_MODE:
+
+            ACK.command = MAV_CMD_DO_SET_MODE;
+            break;
+
+        case MAV_CMD_CONDITION_YAW: // Copter only
+            ACK.command = MAV_CMD_CONDITION_YAW;
+            break;
+
+        case MAV_CMD_DO_FLIGHTTERMINATION: // disarms motors immediately (Copter falls!).
+
+            ACK.command = MAV_CMD_CONDITION_YAW;
+
+            if (mav_cmd_long.param1 > 0.5)
+            {
+                ACK.result = MAV_RESULT_ACCEPTED;
+                // Terminate Flight
+            }
+            else
+            {
+                ACK.result = MAV_RESULT_FAILED; // or MAV_RESULT_UNSUPPORTED if insupported
+            }
+
+            break;
+
+        case MAV_CMD_DO_PARACHUTE:
+
+            ACK.command = MAV_CMD_DO_PARACHUTE;
+
+            if (mav_cmd_long.param1 == 2)
+                ACK.result = MAV_RESULT_ACCEPTED; // Release parachute
+
+            else if (mav_cmd_long.param1 == 1)
+                ACK.result = MAV_RESULT_ACCEPTED; // Endable Parachute
+
+            else if (mav_cmd_long.param1 == 0)
+                ACK.result = MAV_RESULT_ACCEPTED; // Disable
 
             break;
 
